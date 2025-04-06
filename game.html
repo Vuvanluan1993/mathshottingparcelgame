@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Math Shooting Game</title>
+  <style>
+    canvas {
+      background: #eee;
+      display: block;
+      margin: 0 auto;
+      border: 2px solid #000;
+    }
+    body {
+      text-align: center;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="400"></canvas>
+  <audio id="shootSound" src="shoot.mp3" preload="auto"></audio>
+  <audio id="explodeSound" src="explode.mp3" preload="auto"></audio>
+  <audio id="bgMusic" src="backgroundMusic.mp3" preload="auto" loop></audio>
+  <audio id="bulletgiftSound" src="bulletgift.mp3" preload="auto"></audio>
+  <script>  
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+	const bgMusic = document.getElementById('bgMusic');
+	bgMusic.volume = 0.5; 
+    const keys = {};
+    const player = {
+      x: 100,
+      y: 260,
+      width: 32,
+      height: 32,
+      speedY: 0,
+      maxSpeed: 4,
+      acceleration: 0.2,
+      friction: 0.1
+    };
+
+    const bg = {
+      x: 0,
+      speed: 1,
+      image: new Image()
+    };
+    bg.image.src = 'background.png';
+
+    const playerImg = new Image();
+    playerImg.src = 'player.png';
+
+    const bulletImg = new Image();
+    bulletImg.src = 'bullet.png';
+
+    const parcelImg = new Image();
+    parcelImg.src = 'parcel.png';
+
+    const bullets = [];
+    const parcels = [];
+    let isGameOver = false;
+
+    let ammo = 10;
+    let score = 0;
+    let highestScore = localStorage.getItem('highestScore') || 0;
+
+    const shootSound = document.getElementById('shootSound');
+    const explodeSound = document.getElementById('explodeSound');
+
+    function generateAddition() {
+      const a = Math.floor(Math.random() * 6);
+      const b = Math.floor(Math.random() * 6);
+      const isCorrect = Math.random() < 0.7;
+      let result = a + b;
+      if (!isCorrect) {
+        let wrong;
+        do {
+          wrong = Math.floor(Math.random() * 11);
+        } while (wrong === result);
+        result = wrong;
+      }
+      return {
+        text: `${a} + ${b} = ${result}`,
+        correct: (a + b === result)
+      };
+    }
+
+    function spawnParcel() {
+      const { text, correct } = generateAddition();
+      parcels.push({
+        x: canvas.width,
+        y: Math.random() * (canvas.height - 40),
+        width: 75,
+        height: 25,
+        speed: 2,
+        text,
+        correct
+      });
+    }
+
+    document.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if (e.key === ' ' && ammo > 0) {
+        bullets.push({
+          x: player.x + player.width,
+          y: player.y + player.height / 2 - 8,
+          width: 16,
+          height: 16,
+          speed: 5
+        });
+        ammo--;
+        shootSound.play(); // Play shooting sound
+	bgMusic.play()
+      }
+    });
+
+    document.addEventListener('keyup', e => keys[e.key] = false);
+
+    function update() {
+      bg.x -= bg.speed;
+      if (bg.x <= -canvas.width) bg.x = 0;
+
+      if (keys['ArrowUp']) player.speedY -= player.acceleration;
+      else if (keys['ArrowDown']) player.speedY += player.acceleration;
+      else {
+        if (player.speedY > 0) {
+          player.speedY -= player.friction;
+          if (player.speedY < 0) player.speedY = 0;
+        } else if (player.speedY < 0) {
+          player.speedY += player.friction;
+          if (player.speedY > 0) player.speedY = 0;
+        }
+      }
+
+      player.speedY = Math.max(-player.maxSpeed, Math.min(player.speedY, player.maxSpeed));
+      player.y += player.speedY;
+
+      if (player.y < 0) player.y = 0;
+      if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+
+      bullets.forEach(bullet => bullet.x += bullet.speed);
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        if (bullets[i].x > canvas.width) bullets.splice(i, 1);
+      }
+
+      for (let i = parcels.length - 1; i >= 0; i--) {
+        const parcel = parcels[i];
+        parcel.x -= parcel.speed;
+
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          const bullet = bullets[j];
+          const hit = bullet.x < parcel.x + parcel.width &&
+                      bullet.x + bullet.width > parcel.x &&
+                      bullet.y < parcel.y + parcel.height &&
+                      bullet.y + bullet.height > parcel.y;
+          if (hit) {
+            if (parcel.correct) {
+              ammo++;
+            } else {
+              score++;
+              if (score > highestScore) {
+                highestScore = score;
+                localStorage.setItem('highestScore', highestScore);
+              }
+              explodeSound.play(); // Play explode sound
+            }
+            parcels.splice(i, 1);
+            bullets.splice(j, 1);
+            break;
+          }
+        }
+
+        const collideWithPlayer = player.x < parcel.x + parcel.width &&
+                                  player.x + player.width > parcel.x &&
+                                  player.y < parcel.y + parcel.height &&
+                                  player.y + player.height > parcel.y;
+        if (collideWithPlayer && parcel.correct) {
+          ammo++;
+          parcels.splice(i, 1);
+ 		bulletgiftSound.play(); // Play bullet gift sound
+          continue;
+        }
+
+        if (!parcel.correct && parcel.x <= 0) {
+          isGameOver = true;
+        }
+      }
+    }
+
+    function draw() {
+      ctx.drawImage(bg.image, bg.x, 0, canvas.width, canvas.height);
+      ctx.drawImage(bg.image, bg.x + canvas.width, 0, canvas.width, canvas.height);
+
+      ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+
+      bullets.forEach(bullet => {
+        ctx.drawImage(bulletImg, bullet.x, bullet.y, bullet.width, bullet.height);
+      });
+
+      parcels.forEach(parcel => {
+        ctx.drawImage(parcelImg, parcel.x, parcel.y, parcel.width, parcel.height);
+
+        ctx.fillStyle = 'black';
+        ctx.font = 'bold 12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(parcel.text, parcel.x + parcel.width / 2, parcel.y + parcel.height / 2 + 4);
+      });
+
+      ctx.fillStyle = 'black';
+      ctx.font = '16px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText("Số đạn: " + ammo, 10, 20);
+      ctx.fillText("Điểm: " + score, 10, 40);
+
+      ctx.textAlign = 'right';
+      ctx.fillText("Highest score: " + highestScore, canvas.width - 10, 20);
+    }
+
+    function loop() {
+      if (isGameOver) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'black';
+        ctx.font = '48px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2);
+
+        ctx.font = '24px monospace';
+        ctx.fillText("Ấn phím R để chơi lại", canvas.width / 2, canvas.height / 2 + 40);
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    document.addEventListener('keydown', e => {
+      if (isGameOver && e.key.toLowerCase() === 'r') {
+        isGameOver = false;
+        ammo = 10;
+        score = 0;
+        bullets.length = 0;
+        parcels.length = 0;
+        loop();
+      }
+    });
+
+    let loadedImages = 0;
+    const totalImages = 4;
+    [bg.image, playerImg, bulletImg, parcelImg].forEach(img => {
+      img.onload = () => {
+        loadedImages++;
+        if (loadedImages === totalImages) {
+          setInterval(spawnParcel, 2000);
+          loop();
+        }
+      };
+    });
+  </script>
+</body>
+</html>
